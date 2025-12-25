@@ -80,38 +80,13 @@
 ```text
 QHU-Lab-System/
 ├── app.py               # [核心] 后端启动文件 (包含所有路由、DB连接、业务逻辑)
-├── index.html           # [核心] 前端完整入口 (包含 UI 样式、JS 逻辑、API 调用)
+├── front.html           # [核心] 前端完整入口 (包含 UI 样式、JS 逻辑、API 调用)
 ├── db_schema.sql        # [数据库] T-SQL 建表脚本 (用于在 SSMS 中初始化数据库)
 ├── requirements.txt     # 项目依赖包列表
 └── README.md            # 项目说明文档
 ```
 
----
 
-
-## 📂 功能结构
-
-```text
-Project_Root/
-├── app/
-│   ├── __init__.py      # Flask应用初始化
-│   ├── models.py        # 数据库模型 (User, Equipment, Reservation)
-│   ├── routes/          # 路由与视图函数
-│   │   ├── auth.py      # 登录/注册
-│   │   ├── main.py      # 主页与公共页面
-│   │   ├── equipment.py # 设备管理逻辑
-│   │   └── admin.py     # 管理员后台
-│   ├── static/          # 静态资源 (css, js, images)
-│   └── templates/       # HTML模板 (Jinja2)
-│       ├── base.html    # 基础模板
-│       ├── login.html   # 登录页
-│       └── ...
-├── config.py            # 项目配置文件 (数据库URI等)
-├── run.py               # 项目启动脚本
-├── requirements.txt     # 项目依赖包列表
-└── README.md            # 项目说明文档
-
-```
 ## 🚀 安装与运行指南
 ### 1. 环境准备
 确保您的电脑已安装：
@@ -161,7 +136,7 @@ python app.py
 看到 Running on http://127.0.0.1:5000 即表示后端服务启动成功。
 
 步骤二：运行前端 
-直接双击打开 `index.html`，或者在浏览器地址栏输入文件路径。
+直接双击打开 `front.html`，或者在浏览器地址栏输入文件路径。
 **（建议使用 VS Code 的 "Live Server" 插件运行 index.html 以获得更好的体验）**
 
 项目启动后，即可操作运行
