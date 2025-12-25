@@ -9,7 +9,7 @@
 > **组号**：High-polymer
 
 
-![alt text](9ba163b74d9455c5c4e80ec8af8d1e4e.png)
+![alt text](cover.png)
 
 ## 📖 项目介绍
 
