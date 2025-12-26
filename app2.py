@@ -112,7 +112,7 @@ def get_equipments():
     if not conn: return jsonify({"error": "DB Error"}), 500
     try:
         with conn.cursor() as cursor:
-            # 获取所有设备
+            # 获取所有设备，如果是Maintenance状态，这里会直接反映
             sql = """
                 SELECT e.equip_id as id, e.equip_name as name, l.lab_name as lab,
                        e.status, e.category, e.detail_info as detail, e.icon_class as icon
@@ -134,6 +134,7 @@ def check_availability():
         with conn.cursor() as cursor:
             # 查询该设备在当天的所有有效预约
             # SQL Server 中用 CAST(start_time AS DATE) 提取日期
+            # 增加 app_status 过滤，不包括 'Cancelled'
             sql = """
                 SELECT start_time 
                 FROM Appointments 
@@ -179,6 +180,7 @@ def book_equipment():
     try:
         with conn.cursor() as cursor:
             # 2. 再次检查冲突 (双重保险)
+            # 排除已取消的预约
             check_sql = """
                 SELECT COUNT(*) as cnt FROM Appointments 
                 WHERE equip_id=%s AND start_time=%s AND app_status != 'Cancelled'
@@ -238,6 +240,7 @@ def my_bookings():
                         break
                 
                 result.append({
+                    "app_id": row['app_id'], # 必须返回 app_id 以便取消预约
                     "equip_name": row['equip_name'],
                     "booking_date": date_str,
                     "slot_id": slot_id,
@@ -247,28 +250,102 @@ def my_bookings():
     finally:
         conn.close()
 
+# === [新增功能 1] 取消预约 ===
+@app.route('/api/cancel_booking', methods=['POST'])
+def cancel_booking():
+    data = request.json
+    app_id = data.get('app_id')
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            # 1. 检查是否可以取消（例如只能取消 Pending 或 Approved 状态的预约）
+            sql_check = "SELECT app_status FROM Appointments WHERE app_id=%s"
+            cursor.execute(sql_check, (app_id,))
+            result = cursor.fetchone()
+            if not result:
+                return jsonify({"error": "预约不存在"}), 404
+            
+            if result['app_status'] == 'Cancelled':
+                 return jsonify({"error": "预约已取消，无需重复操作"}), 400
 
-#  [新增] 提交报修单 (学生端)
+            # 2. 更新状态为 Cancelled
+            sql_update = "UPDATE Appointments SET app_status='Cancelled' WHERE app_id=%s"
+            cursor.execute(sql_update, (app_id,))
+            conn.commit()
+            return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# === [新增功能 2] 系统概览数据 ===
+@app.route('/api/dashboard_stats', methods=['GET'])
+def dashboard_stats():
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "DB Error"}), 500
+    try:
+        with conn.cursor() as cursor:
+            # 1. 总设备数
+            cursor.execute("SELECT COUNT(*) as total FROM Equipments")
+            total_equip = cursor.fetchone()['total']
+
+            # 2. 当前可用 (假设 status='Available')
+            cursor.execute("SELECT COUNT(*) as available FROM Equipments WHERE status='Available'")
+            available_equip = cursor.fetchone()['available']
+
+            # 3. 今日预约 (假设 create_time 为今天)
+            today_str = datetime.date.today().strftime('%Y-%m-%d')
+            cursor.execute("SELECT COUNT(*) as today_bookings FROM Appointments WHERE CAST(create_time AS DATE)=%s", (today_str,))
+            today_bookings = cursor.fetchone()['today_bookings']
+
+            # 4. 待维修 (假设 status='Maintenance')
+            cursor.execute("SELECT COUNT(*) as maintenance FROM Equipments WHERE status='Maintenance'")
+            maintenance_equip = cursor.fetchone()['maintenance']
+
+            return jsonify({
+                "total_equip": total_equip,
+                "available_equip": available_equip,
+                "today_bookings": today_bookings,
+                "maintenance_equip": maintenance_equip
+            })
+    finally:
+        conn.close()
+
+#  [新增/修改] 提交报修单 (学生端)
 @app.route('/api/report_repair', methods=['POST', 'OPTIONS'])
 def report_repair():
     if request.method == 'OPTIONS':
         return jsonify({'status': 'ok'}), 200
     data = request.json
+    equip_id = data.get('equip_id')
+    user_id = data.get('user_id')
+    issue_desc = data.get('issue_desc')
+    urgency = data.get('urgency')
+
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
+            # === [新增功能 4] 检查是否重复报修 ===
+            # 检查该设备是否有未处理（Pending）的报修单
+            sql_check = "SELECT COUNT(*) as cnt FROM Repairs WHERE equip_id=%s AND status='Pending'"
+            cursor.execute(sql_check, (equip_id,))
+            if cursor.fetchone()['cnt'] > 0:
+                 return jsonify({"error": "该设备已有人提交报修且尚未处理，请勿重复提交"}), 409
+
             # 1. 插入报修记录
             sql = """
                 INSERT INTO Repairs (user_id, equip_id, issue_desc, urgency, status)
                 VALUES (%s, %s, %s, %s, 'Pending')
             """
-            cursor.execute(sql, (data['user_id'], data['equip_id'], data['issue_desc'], data['urgency']))
+            cursor.execute(sql, (user_id, equip_id, issue_desc, urgency))
             
-            # 2. 自动将设备状态改为 'Maintenance' (可选，看业务逻辑)
-            # cursor.execute("UPDATE Equipments SET status='Maintenance' WHERE equip_id=%s", (data['equip_id'],))
+            # === [新增功能 3] 更新设备状态为 Maintenance ===
+            cursor.execute("UPDATE Equipments SET status='Maintenance' WHERE equip_id=%s", (equip_id,))
             
             conn.commit()
             return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     finally:
         conn.close()
 
